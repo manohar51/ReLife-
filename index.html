@@ -1125,7 +1125,7 @@
 
             try {
                 const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
-                const apiKey = "";
+                const apiKey = ""; // This should be handled by the environment.
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
                 const response = await fetch(apiUrl, {
@@ -1135,8 +1135,14 @@
                 });
 
                 if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+                    let errorDetail = "An unknown error occurred.";
+                    try {
+                        const errorData = await response.json();
+                        errorDetail = errorData.error?.message || JSON.stringify(errorData);
+                    } catch (e) {
+                        errorDetail = await response.text();
+                    }
+                    throw new Error(`The AI service denied the request (Status: ${response.status}). This may be a temporary configuration issue. Details: ${errorDetail}`);
                 }
 
                 const result = await response.json();
@@ -1158,8 +1164,8 @@
                 }
             } catch (error) {
                 console.error("Error calling Gemini API:", error);
-                generatedRecipesOutput.textContent = `Error generating recipes: ${error.message}. Please try again.`;
-                showMessage('Error generating recipes.', 'error');
+                generatedRecipesOutput.textContent = `Error generating recipes: ${error.message}. Please try again in a moment.`;
+                showMessage('Error generating recipes. Please check the console for details.', 'error', 5000);
             } finally {
                 generateRecipesButton.disabled = false;
                 generateRecipesButtonText.textContent = 'Generate Recipe Ideas';
