@@ -361,6 +361,24 @@
                     *Recipe suggestions are AI-generated. Always verify ingredients and adjust for personal needs.*
                 </p>
             </div>
+            
+            <!-- API Key Input Section -->
+            <div id="apiKeySection" class="mt-8 p-6 bg-red-50 border border-red-200 rounded-lg hidden">
+                <h2 class="text-xl font-semibold text-red-800 mb-4">API Key Required for Live App</h2>
+                <p class="text-gray-700 mb-4">To generate AI-powered recipes on a live website, you need a Google Gemini API key. This feature will not work without it when running outside the original preview environment.</p>
+                <ol class="list-decimal list-inside text-gray-600 mb-4 space-y-1">
+                    <li>Get your free API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-600 hover:underline font-semibold">Google AI Studio</a>.</li>
+                    <li>Paste the key below. It will be saved in your browser for future use.</li>
+                </ol>
+                <div>
+                    <label for="geminiApiKey" class="block text-gray-700 text-sm font-medium mb-2">Your Gemini API Key</label>
+                    <input type="password" id="geminiApiKey" class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent" placeholder="Enter your API key here">
+                </div>
+                <div class="flex items-center mt-4 space-x-4">
+                    <button id="saveApiKeyButton" class="flex-grow bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-4 rounded-lg">Save Key & Generate</button>
+                    <button id="clearApiKeyButton" class="text-sm text-gray-500 hover:text-red-600 hover:underline">Clear Key</button>
+                </div>
+            </div>
 
             <div class="mt-6 space-y-4 no-print">
                  <button id="viewMealPlanReportButton" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75 transition duration-200 ease-in-out shadow-md hidden">
@@ -820,6 +838,7 @@
         let userData = {};
         let screenHistory = []; // Stores the history of visited screens
         let currentScreen = 'verificationScreen'; // Start with the verification screen
+        let geminiApiKey = ''; // To store the user-provided API key
 
         // Get references to all screens and the message box
         const screens = {
@@ -1110,6 +1129,22 @@
             generateRecipesSpinner.classList.remove('hidden');
             generatedRecipesOutput.textContent = 'Fetching delicious ideas for you...';
 
+            // Check for API Key. The key provided by the Canvas environment is an empty string.
+            // On a live site, this will need to be provided by the user.
+            let apiKey = geminiApiKey;
+            if (apiKey === '') {
+                // This is a special check for the Canvas environment.
+                // If __initial_auth_token is NOT defined, it means we are likely on a live site.
+                if (typeof __initial_auth_token === 'undefined') {
+                    document.getElementById('apiKeySection').classList.remove('hidden');
+                    showMessage('Please provide a Gemini API key to generate recipes.', 'error', 5000);
+                    generateRecipesButton.disabled = false;
+                    generateRecipesButtonText.textContent = 'Generate Recipe Ideas';
+                    generateRecipesSpinner.classList.add('hidden');
+                    return; // Stop execution
+                }
+            }
+
             const { dietType, dietaryPreferences, targetCaloriesForWeightLoss, proteinGrams, carbGrams, fatGrams } = userData;
             const availableGroceries = document.getElementById('availableGroceries').value.trim();
             userData.availableGroceries = availableGroceries;
@@ -1125,8 +1160,7 @@
 
             try {
                 const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
-                const apiKey = ""; // This should be handled by the environment.
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
                 const response = await fetch(apiUrl, {
                     method: 'POST',
@@ -1135,14 +1169,8 @@
                 });
 
                 if (!response.ok) {
-                    let errorDetail = "An unknown error occurred.";
-                    try {
-                        const errorData = await response.json();
-                        errorDetail = errorData.error?.message || JSON.stringify(errorData);
-                    } catch (e) {
-                        errorDetail = await response.text();
-                    }
-                    throw new Error(`The AI service denied the request (Status: ${response.status}). This may be a temporary configuration issue. Details: ${errorDetail}`);
+                    const errorText = await response.text();
+                    throw new Error(`API request failed with status ${response.status}: ${errorText}`);
                 }
 
                 const result = await response.json();
@@ -1164,8 +1192,8 @@
                 }
             } catch (error) {
                 console.error("Error calling Gemini API:", error);
-                generatedRecipesOutput.textContent = `Error generating recipes: ${error.message}. Please try again in a moment.`;
-                showMessage('Error generating recipes. Please check the console for details.', 'error', 5000);
+                generatedRecipesOutput.textContent = `Error generating recipes: ${error.message}. Please try again.`;
+                showMessage('Error generating recipes.', 'error');
             } finally {
                 generateRecipesButton.disabled = false;
                 generateRecipesButtonText.textContent = 'Generate Recipe Ideas';
@@ -1173,6 +1201,27 @@
             }
         });
         
+        document.getElementById('saveApiKeyButton').addEventListener('click', () => {
+            const keyInput = document.getElementById('geminiApiKey');
+            const key = keyInput.value.trim();
+            if (key) {
+                localStorage.setItem('geminiApiKey', key);
+                geminiApiKey = key;
+                document.getElementById('apiKeySection').classList.add('hidden');
+                showMessage('API Key saved. Generating recipes...', 'success');
+                generateRecipesButton.click();
+            } else {
+                showMessage('Please enter a valid API key.', 'error');
+            }
+        });
+
+        document.getElementById('clearApiKeyButton').addEventListener('click', () => {
+            localStorage.removeItem('geminiApiKey');
+            geminiApiKey = '';
+            document.getElementById('geminiApiKey').value = '';
+            showMessage('API Key cleared from browser storage.', 'success');
+        });
+
         viewMealPlanReportButton.addEventListener('click', () => {
             populateAndShowDailyMealPlanReport();
         });
@@ -1353,6 +1402,17 @@
 
         // Initialize the app
         document.addEventListener('DOMContentLoaded', () => {
+            // Load the API key from local storage if it exists
+            geminiApiKey = localStorage.getItem('geminiApiKey') || '';
+            
+            // This variable is provided by the Canvas environment. If it's undefined, we're likely on a live site.
+            if (typeof __initial_auth_token === 'undefined' && !geminiApiKey) {
+                console.log("Running on a live site without an API key.");
+            } else if (typeof __initial_auth_token !== 'undefined') {
+                // In the Canvas preview, the API key is handled automatically. We can set it to an empty string.
+                geminiApiKey = '';
+            }
+
             showScreen('verificationScreen', 'Customer Verification');
         });
     </script>
